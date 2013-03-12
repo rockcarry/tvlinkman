@@ -21,7 +21,9 @@ static BOOL check_video_url(const char *url)
     BOOL   bIsOK  = FALSE;
     HANDLE hPipeR = NULL;
     HANDLE hPipeW = NULL;
-    SECURITY_ATTRIBUTES sa = {0};
+    PROCESS_INFORMATION pinfo = {0};
+    STARTUPINFOA        sinfo = {0};
+    SECURITY_ATTRIBUTES sa    = {0};
     sa.nLength        = sizeof(sa);
     sa.bInheritHandle = TRUE;
     retv = CreatePipe(&hPipeR, &hPipeW, &sa, 0);
@@ -38,8 +40,6 @@ static BOOL check_video_url(const char *url)
     strcat(cmdline, url);
 
     // create process
-    PROCESS_INFORMATION pinfo = {0};
-    STARTUPINFOA        sinfo = {0};
     sinfo.cb         = sizeof(sinfo);
     sinfo.dwFlags    = STARTF_USESTDHANDLES;
     sinfo.hStdOutput = hPipeW;
@@ -77,92 +77,76 @@ done:
 
 int main(int argc, char *argv[])
 {
-#if 1
     bool retv = false;
     char strXmlIn  [MAX_PATH];
     char strXmlOut0[MAX_PATH];
     char strXmlOut1[MAX_PATH];
+    FILE *fp = NULL;
+
     GetAppBasePath(strXmlIn  );
     GetAppBasePath(strXmlOut0);
     GetAppBasePath(strXmlOut1);
     strcat(strXmlIn  , "androidtv.xml");
     strcat(strXmlOut0, "androidtv-ok.xml");
-    strcat(strXmlOut1, "androidtv-ng.xml");
+    strcat(strXmlOut1, "androidtv-ng.ini");
+    fp = fopen(strXmlOut1, "w");
 
-    TiXmlDocument *pDoc = new TiXmlDocument();
-    if (NULL == pDoc) return false;
-    retv = pDoc->LoadFile(strXmlIn);
+    TiXmlDocument *pDoc0 = new TiXmlDocument();
+    if (!pDoc0) return false;
+    retv = pDoc0->LoadFile(strXmlIn);
     if (!retv) return false;
 
     HANDLE hConsole = NULL;
     hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
 
-    TiXmlElement   *pEle0 = pDoc->RootElement();
+    TiXmlElement   *pEle0 = pDoc0->RootElement();
     TiXmlElement   *pEle1 = NULL;
     TiXmlElement   *pEle2 = NULL;
     TiXmlElement   *pEle3 = NULL;
-    TiXmlElement   *pEle4 = NULL;
+    TiXmlElement   *pEleN = NULL;
     TiXmlAttribute *pAttr = NULL;
-    const char *strName   = NULL;
-    const char *strValue  = NULL;
-    if (pEle0)
+    BOOL            bIsOK = FALSE;
+
+    if (!pEle0 || strcmp(pEle0->Value(), "response")) return false;
+    for (pEle1=pEle0->FirstChildElement(); pEle1; pEle1=pEle1->NextSiblingElement())
     {
-        strName = pEle0->Value();
-        if (strcmp(strName, "response") == 0)
+        if (strcmp(pEle1->Value(), "liveType")) continue;
+        for (pEle2=pEle1->FirstChildElement(); pEle2; )
         {
-            for (pEle1=pEle0->FirstChildElement(); pEle1; pEle1=pEle1->NextSiblingElement())
+            if (strcmp(pEle2->Value(), "channel")) goto next;
+            for (pEle3=pEle2->FirstChildElement(); pEle3; pEle3=pEle3->NextSiblingElement())
             {
-                strName = pEle1->Value();
-                if (strcmp(strName, "attributes") == 0)
+                if (strcmp(pEle3->Value(), "addressInfo")) continue;
+                for (pAttr=pEle3->FirstAttribute(); pAttr; pAttr=pAttr->Next())
                 {
-                    for (pEle2=pEle1->FirstChildElement(); pEle2; pEle2=pEle2->NextSiblingElement())
+                    if (strcmp(pAttr->Name(), "url")) continue;
+                    bIsOK = check_video_url(pAttr->Value());
+                    if (bIsOK)
                     {
-                        strName = pEle2->Value();
-                        if (strcmp(strName, "liveType") == 0)
-                        {
-                            for (pEle3=pEle2->FirstChildElement(); pEle3; pEle3=pEle3->NextSiblingElement())
-                            {
-                                strName = pEle3->Value();
-                                if (strcmp(strName, "channel") == 0)
-                                {
-                                    for (pEle4=pEle3->FirstChildElement(); pEle4; pEle4=pEle4->NextSiblingElement())
-                                    {
-                                        strName = pEle4->Value();
-                                        if (strcmp(strName, "addressInfo") == 0)
-                                        {
-                                            for (pAttr=pEle4->FirstAttribute(); pAttr; pAttr=pAttr->Next())
-                                            {
-                                                strName  = pAttr->Name();
-                                                strValue = pAttr->Value();
-                                                if (strcmp(strName, "url") == 0)
-                                                {
-                                                    if (check_video_url(strValue))
-                                                    {
-                                                        SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN|FOREGROUND_INTENSITY);
-                                                        printf("[OK    ] ");
-                                                        SetConsoleTextAttribute(hConsole, 0x7);
-                                                    }
-                                                    else
-                                                    {
-                                                        SetConsoleTextAttribute(hConsole, FOREGROUND_RED|FOREGROUND_INTENSITY);
-                                                        printf("[FAILED] ");
-                                                        SetConsoleTextAttribute(hConsole, 0x7);
-                                                    }
-                                                    printf("%s\n", strValue);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN|FOREGROUND_INTENSITY);
+                        printf("[OK]");
+                        SetConsoleTextAttribute(hConsole, 0x7);
                     }
+                    else
+                    {
+                        SetConsoleTextAttribute(hConsole, FOREGROUND_RED|FOREGROUND_INTENSITY);
+                        printf("[NG]");
+                        SetConsoleTextAttribute(hConsole, 0x7);
+                        if (fp) fprintf(fp, "%s\n", pAttr->Value());
+                    }
+                    printf("%s\n", pAttr->Value());
                 }
             }
+
+next:
+            pEleN = pEle2;
+            pEle2 = pEle2->NextSiblingElement();
+            if (!bIsOK) pEle1->RemoveChild(pEleN);
         }
     }
-#endif
 
+    pDoc0->SaveFile(strXmlOut0);
+    if (fp) fclose(fp);
     printf("\ndone!\n");
     getch();
     return 0;
