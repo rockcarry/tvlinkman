@@ -106,22 +106,54 @@ int main(int argc, char *argv[])
     TiXmlElement   *pEleN = NULL;
     TiXmlAttribute *pAttr = NULL;
     BOOL            bIsOK = FALSE;
+    int             nType = 0;
+    char            livetype[MAX_PATH];
+    char            channame[MAX_PATH];
 
     if (!pEle0 || strcmp(pEle0->Value(), "response")) return false;
     for (pEle1=pEle0->FirstChildElement(); pEle1; pEle1=pEle1->NextSiblingElement())
     {
         if (strcmp(pEle1->Value(), "liveType")) continue;
+        for (pAttr=pEle1->FirstAttribute(); pAttr; pAttr=pAttr->Next())
+        {
+            if (strcmp(pAttr->Name(), "name")) continue;
+            strcpy(livetype, pAttr->Value());
+        }
+
         for (pEle2=pEle1->FirstChildElement(); pEle2; )
         {
             if (strcmp(pEle2->Value(), "channel")) goto next;
+
+            for (pAttr=pEle2->FirstAttribute(); pAttr; pAttr=pAttr->Next())
+            {
+                if (strcmp(pAttr->Name(), "name")) continue;
+                strcpy(channame, pAttr->Value());
+            }
+
             for (pEle3=pEle2->FirstChildElement(); pEle3; pEle3=pEle3->NextSiblingElement())
             {
                 if (strcmp(pEle3->Value(), "addressInfo")) continue;
+
+                nType = 0; // get type value, default is 0
+                for (pAttr=pEle3->FirstAttribute(); pAttr; pAttr=pAttr->Next())
+                {
+                    if (strcmp(pAttr->Name(), "type")) continue;
+                    nType = atoi(pAttr->Value());
+                }
+
+                // check normal url
                 for (pAttr=pEle3->FirstAttribute(); pAttr; pAttr=pAttr->Next())
                 {
                     if (strcmp(pAttr->Name(), "url")) continue;
-                    bIsOK = check_video_url(pAttr->Value());
-                    if (bIsOK)
+                    if (nType == 1) bIsOK = TRUE;
+                    else bIsOK = check_video_url(pAttr->Value());
+                    if (nType == 1)
+                    {
+                        SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN|FOREGROUND_RED|FOREGROUND_INTENSITY);
+                        printf("[OK]");
+                        SetConsoleTextAttribute(hConsole, 0x7);
+                    }
+                    else if (bIsOK)
                     {
                         SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN|FOREGROUND_INTENSITY);
                         printf("[OK]");
@@ -132,9 +164,9 @@ int main(int argc, char *argv[])
                         SetConsoleTextAttribute(hConsole, FOREGROUND_RED|FOREGROUND_INTENSITY);
                         printf("[NG]");
                         SetConsoleTextAttribute(hConsole, 0x7);
-                        if (fp) fprintf(fp, "%s\n", pAttr->Value());
+                        if (fp) fprintf(fp, "%s %s %s\n", livetype, channame, pAttr->Value());
                     }
-                    printf("%s\n", pAttr->Value());
+                    printf("%s %s %s\n", livetype, channame, pAttr->Value());
                 }
             }
 
